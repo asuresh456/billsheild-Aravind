@@ -1,6 +1,6 @@
 # BillShield MVP
 
-A small Vercel-ready BillShield prototype: static chat UI plus a serverless `/api/analyze` endpoint. The endpoint sends the user's selected PDF/image and question to the Gemini API. Supabase Auth provides email-link account creation and sign-in; a user must authenticate before starting a review. The database stores chat text and the user's stated context under row-level security. Bill images/PDFs are temporary and are not stored in Supabase.
+A small Vercel-ready BillShield prototype: static chat UI plus a serverless `/api/analyze` endpoint. The endpoint sends the user's selected PDF/image and question to the Gemini API. Reviews are available to guests without an account; guest conversations stay in browser memory and are not saved. Supabase Auth provides optional email-link account creation and sign-in. When signed in, chat text and the user's stated context are stored under row-level security. Bill images/PDFs are temporary and are not stored in Supabase.
 
 ## Run locally
 
@@ -22,7 +22,7 @@ Apply `supabase/migrations/20261019154036_user_conversation_memory.sql` once in 
 
 Run `vercel dev` from this folder and open `http://localhost:3000`.
 
-The UI accepts PDF, JPG, PNG, and WebP files up to 3 MB. The server sends them to Gemini for analysis but does not write them to disk or a database. Authenticated conversation text and the user's stated context are saved to their account; row-level security restricts access to the owner. Bill files must be re-uploaded if needed in a later session. Free-tier Gemini content may be used to improve Google's products, so use synthetic or fully redacted bills during development and demos. Do not upload real card statements on the free tier.
+The UI accepts PDF, JPG, PNG, and WebP files up to 3 MB. The server sends them to Gemini for analysis but does not write them to disk or a database. Signed-in conversation text and the user's stated context are saved to their account; row-level security restricts access to the owner. Guest conversations are not saved and disappear when the page is refreshed. Bill files must be re-uploaded if needed in a later session. Because guest access is public and invokes the Gemini API, configure appropriate Vercel rate limits and a usage budget before sharing widely. Free-tier Gemini content may be used to improve Google's products, so use synthetic or fully redacted bills during development and demos. Do not upload real card statements on the free tier.
 
 ## Deploy
 

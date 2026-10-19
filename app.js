@@ -17,6 +17,7 @@ let currentUser = null;
 let activeConversationId = null;
 let allowAutoRestore = true;
 let authMode = 'signup';
+let accountFormOpen = false;
 
 function toast(text) {
   const el = document.querySelector('#toast');
@@ -116,33 +117,46 @@ function showLineCard(text) {
 function setAuthView(user) {
   currentUser = user || null;
   const authForm = document.querySelector('#authForm');
+  const accountToggle = document.querySelector('#accountToggle');
   const signOutButton = document.querySelector('#signOutButton');
   const list = document.querySelector('#conversationList');
   const copy = document.querySelector('#accountCopy');
   const status = document.querySelector('#privacyStatus');
+  const guestBanner = document.querySelector('#authRequiredBanner');
   const authenticated = Boolean(currentUser);
-  document.querySelector('#authRequiredBanner').classList.toggle('hidden', authenticated);
-  document.querySelector('#chatCard').classList.toggle('auth-locked', !authenticated);
-  document.querySelectorAll('#uploadCard, .promise-card, #lineCard').forEach(node => node.classList.toggle('auth-locked', !authenticated));
-  document.querySelectorAll('#billFile, #removeFile, #question, #sendButton, #promise, #calculateButton, #understoodButton, #draftButton').forEach(node => { node.disabled = !authenticated; });
+  guestBanner.classList.toggle('hidden', authenticated);
+  guestBanner.textContent = supabaseClient
+    ? 'Guest review is ready. Your conversation stays in this browser session and is not saved. Sign in to keep review history privately.'
+    : 'Guest review is ready. Reviews will not be saved, and account sign-in is temporarily unavailable.';
   if (currentUser) {
+    accountFormOpen = false;
     authForm.classList.add('hidden');
+    accountToggle.classList.add('hidden');
     signOutButton.classList.remove('hidden');
     list.classList.remove('hidden');
     copy.textContent = currentUser.email || 'Signed in';
     status.textContent = 'Private history enabled';
     loadConversationList();
   } else {
-    authForm.classList.remove('hidden');
     signOutButton.classList.add('hidden');
     list.classList.add('hidden');
+    accountToggle.classList.toggle('hidden', !supabaseClient);
+    accountToggle.textContent = accountFormOpen ? 'Close sign in' : 'Sign in or create account';
+    authForm.classList.toggle('hidden', !supabaseClient || !accountFormOpen);
     copy.textContent = supabaseClient
-      ? (authMode === 'signup' ? 'Create an account to keep your bill reviews private and available next time.' : 'Sign in to return to your saved bill reviews.')
-      : 'Account storage is not connected. Reviews are paused until setup is available.';
-    status.textContent = supabaseClient ? 'Sign in required' : 'Account setup unavailable';
+      ? 'Guest review is available. Sign in or create an account to save private history.'
+      : 'Guest review is available. Account sign-in is temporarily unavailable, so reviews will not be saved.';
+    status.textContent = 'Guest review · not saved';
     list.replaceChildren();
   }
 }
+
+document.querySelector('#accountToggle').addEventListener('click', () => {
+  accountFormOpen = !accountFormOpen;
+  document.querySelector('#authForm').classList.toggle('hidden', !accountFormOpen);
+  document.querySelector('#accountToggle').textContent = accountFormOpen ? 'Close sign in' : 'Sign in or create account';
+  if (accountFormOpen) document.querySelector('#authEmail').focus();
+});
 
 function setAuthMode(mode) {
   authMode = mode;
@@ -160,8 +174,8 @@ function setAuthMode(mode) {
     ? 'We’ll email you a secure link to confirm your address and finish creating your account.'
     : 'Enter the email you used to sign up. We’ll send a secure sign-in link.';
   if (!currentUser) document.querySelector('#accountCopy').textContent = signup
-    ? 'Create an account to keep your bill reviews private and available next time.'
-    : 'Sign in to return to your saved bill reviews.';
+    ? 'Guest review is available. Create an account to keep bill reviews private and available next time.'
+    : 'Guest review is available. Sign in to return to your saved bill reviews.';
 }
 
 async function loadConversationList() {
@@ -332,11 +346,6 @@ form.addEventListener('submit', async event => {
   const text = question.value.trim();
   if (!text) return;
   await supabaseReady;
-  if (!currentUser) {
-    toast(supabaseClient ? 'Create an account or sign in before starting a bill review.' : 'Sign-in storage is unavailable right now. Try again after setup is restored.');
-    document.querySelector('#authEmail').focus();
-    return;
-  }
   if (!selectedFile && history.length === 0) return toast('Add a bill before asking your first question.');
   const file = selectedFile;
   addMessage(text, 'user');
@@ -358,11 +367,15 @@ form.addEventListener('submit', async event => {
     }
     const payload = { message: text, history: history.slice(-11, -1), promise: promiseInput.value.trim() };
     if (file) payload.file = { name: file.name, type: file.type, data: await readFileAsDataURL(file) };
-    const { data: authData, error: authError } = await supabaseClient.auth.getSession();
-    if (authError || !authData.session?.access_token) throw new Error('Your sign-in session expired. Please sign in again.');
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser && supabaseClient) {
+      const { data: authData, error: authError } = await supabaseClient.auth.getSession();
+      if (authError || !authData.session?.access_token) throw new Error('Your sign-in session expired. Please sign in again.');
+      headers.Authorization = `Bearer ${authData.session.access_token}`;
+    }
     const response = await fetch('./api/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.session.access_token}` },
+      headers,
       body: JSON.stringify(payload)
     });
     const result = await response.json();
@@ -372,7 +385,7 @@ form.addEventListener('submit', async event => {
     if (currentUser && saved) {
       try { await saveMessage('assistant', result.answer); }
       catch (error) { console.error('Could not save the review response:', error.message); toast('The response is ready, but could not be added to saved history.'); }
-    }
+    } else if (!currentUser) toast('Review ready. Sign in if you want to save this conversation.');
     showLineCard(result.answer);
     loadConversationList();
   } catch (error) {

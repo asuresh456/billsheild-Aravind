@@ -18,9 +18,10 @@
       <button class="nav-item active" type="button"><span class="nav-icon">▤</span> New bill review</button>
       <button class="nav-item" id="newReview" type="button"><span class="nav-icon">＋</span> Start over</button>
       <div class="account-panel" id="accountPanel">
-        <div class="rail-label">PRIVATE HISTORY</div>
-        <p class="account-copy" id="accountCopy">Create an account or sign in to save your bill reviews.</p>
-        <form id="authForm" class="auth-form">
+        <div class="rail-label">OPTIONAL ACCOUNT</div>
+        <p class="account-copy" id="accountCopy">Review as a guest, or sign in to save your bill reviews privately.</p>
+        <button id="accountToggle" class="sign-out-button" type="button">Sign in or create account</button>
+        <form id="authForm" class="auth-form hidden">
           <div class="auth-mode" role="group" aria-label="Choose account action">
             <button id="signupMode" class="auth-mode-button active" type="button" aria-pressed="true">Sign up</button>
             <button id="loginMode" class="auth-mode-button" type="button" aria-pressed="false">Sign in</button>
@@ -63,7 +64,7 @@
         <div class="content-grid">
           <section class="conversation-column">
             <div class="section-heading"><div><span class="step-label">YOUR CONVERSATION</span><h2>Ask about your bill</h2></div><span class="conversation-state"><i></i> Ready when you are</span></div>
-            <div class="auth-required-banner hidden" id="authRequiredBanner">Sign up or sign in to start a private bill review. Your conversations will be saved to your account.</div>
+            <div class="auth-required-banner" id="authRequiredBanner">Guest review is ready. Your conversation stays in this browser session and is not saved. Sign in to keep review history privately.</div>
             <div class="chat-card" id="chatCard">
               <div class="chat-messages" id="messages" aria-live="polite">
                 <div class="message assistant-message">
