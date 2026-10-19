@@ -27,28 +27,8 @@ async function requestGemini(url, options) {
   }
 }
 
-async function hasValidOptionalAuth(req) {
-  const authorization = req.headers.authorization || '';
-  // Guest reviews are allowed without an Authorization header. If a caller
-  // provides a token, require it to be a valid Supabase session.
-  if (!authorization) return true;
-  if (!/^Bearer\s+\S+$/i.test(authorization)) return false;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseKey) return false;
-  try {
-    const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
-      headers: { apikey: supabaseKey, Authorization: authorization }
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Use POST for bill review.' });
-  if (!await hasValidOptionalAuth(req)) return json(res, 401, { error: 'Your sign-in session is invalid. Sign in again or continue as a guest.' });
   if (!process.env.GEMINI_API_KEY) return json(res, 503, { error: 'Bill reading is not connected yet. Add GEMINI_API_KEY to your local or Vercel environment variables.' });
 
   try {

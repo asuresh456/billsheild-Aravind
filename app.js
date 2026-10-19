@@ -12,7 +12,7 @@ const lineSummary = document.querySelector('#lineSummary');
 const history = [];
 let selectedFile = null;
 let toastTimer;
-let supabaseClient = null;
+let databaseReady = false;
 let currentUser = null;
 let activeConversationId = null;
 let allowAutoRestore = true;
@@ -25,6 +25,17 @@ function toast(text) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+async function apiRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
+    credentials: 'same-origin'
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
+  return result;
 }
 
 function setFile(file) {
@@ -125,7 +136,7 @@ function setAuthView(user) {
   const guestBanner = document.querySelector('#authRequiredBanner');
   const authenticated = Boolean(currentUser);
   guestBanner.classList.toggle('hidden', authenticated);
-  guestBanner.textContent = supabaseClient
+  guestBanner.textContent = databaseReady
     ? 'Guest review is ready. Your conversation stays in this browser session and is not saved. Sign in to keep review history privately.'
     : 'Guest review is ready. Reviews will not be saved, and account sign-in is temporarily unavailable.';
   if (currentUser) {
@@ -140,12 +151,12 @@ function setAuthView(user) {
   } else {
     signOutButton.classList.add('hidden');
     list.classList.add('hidden');
-    accountToggle.classList.toggle('hidden', !supabaseClient);
+    accountToggle.classList.toggle('hidden', !databaseReady);
     accountToggle.textContent = accountFormOpen ? 'Close sign in' : 'Sign in or create account';
-    authForm.classList.toggle('hidden', !supabaseClient || !accountFormOpen);
-    copy.textContent = supabaseClient
+    authForm.classList.toggle('hidden', !databaseReady || !accountFormOpen);
+    copy.textContent = databaseReady
       ? 'Guest review is available. Sign in or create an account to save private history.'
-      : 'Guest review is available. Account sign-in is temporarily unavailable, so reviews will not be saved.';
+      : 'Guest review is available. Account storage is not connected, so reviews will not be saved.';
     status.textContent = 'Guest review · not saved';
     list.replaceChildren();
   }
@@ -169,21 +180,25 @@ function setAuthMode(mode) {
   document.querySelector('#authName').classList.toggle('hidden', !signup);
   document.querySelector('#authName').required = false;
   document.querySelector('#authEmail').autocomplete = signup ? 'email' : 'username';
-  document.querySelector('#authButton').textContent = signup ? 'Create account with email' : 'Sign in with email';
+  const password = document.querySelector('#authPassword');
+  password.autocomplete = signup ? 'new-password' : 'current-password';
+  password.placeholder = signup ? 'At least 8 characters' : 'Your password';
+  document.querySelector('#authButton').textContent = signup ? 'Create account' : 'Sign in';
   document.querySelector('#authHelp').textContent = signup
-    ? 'We’ll email you a secure link to confirm your address and finish creating your account.'
-    : 'Enter the email you used to sign up. We’ll send a secure sign-in link.';
+    ? 'Use your email as your BillShield ID. No confirmation email is sent. Keep your password safe; password recovery is not enabled yet.'
+    : 'Sign in with the email ID and password you registered.';
   if (!currentUser) document.querySelector('#accountCopy').textContent = signup
     ? 'Guest review is available. Create an account to keep bill reviews private and available next time.'
     : 'Guest review is available. Sign in to return to your saved bill reviews.';
 }
 
 async function loadConversationList() {
-  if (!supabaseClient || !currentUser) return;
+  if (!databaseReady || !currentUser) return;
   const list = document.querySelector('#conversationList');
-  const { data, error } = await supabaseClient.from('conversations')
-    .select('id,title,updated_at').order('updated_at', { ascending: false }).limit(8);
-  if (error) {
+  let data;
+  try {
+    ({ data } = await apiRequest('/api/data?resource=conversations'));
+  } catch (error) {
     console.error('Could not load saved conversations:', error.message);
     document.querySelector('#accountCopy').textContent = 'History storage is not ready yet. Apply the database setup, then reload.';
     return;
@@ -213,12 +228,14 @@ async function loadConversationList() {
 }
 
 async function openConversation(id) {
-  const { data: conversation, error: conversationError } = await supabaseClient.from('conversations')
-    .select('id,title,context').eq('id', id).single();
-  if (conversationError) return toast('Could not open that saved review.');
-  const { data, error } = await supabaseClient.from('messages')
-    .select('role,content').eq('conversation_id', id).order('created_at', { ascending: true }).limit(100);
-  if (error) return toast('Could not load the saved messages.');
+  let conversation;
+  let data;
+  try {
+    ({ data: conversation } = await apiRequest(`/api/data?resource=conversation&id=${encodeURIComponent(id)}`));
+    ({ data } = await apiRequest(`/api/data?resource=messages&id=${encodeURIComponent(id)}`));
+  } catch (error) {
+    return toast(error.message || 'Could not open that saved review.');
+  }
   activeConversationId = id;
   history.splice(0, history.length, ...data.map(({ role, content }) => ({ role, content })));
   messages.replaceChildren();
@@ -241,48 +258,45 @@ async function openConversation(id) {
 async function ensureConversation(firstQuestion) {
   if (!currentUser || activeConversationId) return activeConversationId;
   const title = firstQuestion.trim().replace(/\s+/g, ' ').slice(0, 72) || 'Bill review';
-  const { data, error } = await supabaseClient.from('conversations').insert({
-    user_id: currentUser.id,
-    title,
-    context: promiseInput.value.trim().slice(0, 3000)
-  }).select('id').single();
-  if (error) throw error;
+  const { data } = await apiRequest('/api/data', {
+    method: 'POST', body: JSON.stringify({ action: 'createConversation', title, context: promiseInput.value.trim().slice(0, 3000) })
+  });
   activeConversationId = data.id;
   loadConversationList();
   return activeConversationId;
 }
 
 async function saveMessage(role, content, firstQuestion = '') {
-  if (!currentUser || !supabaseClient) return false;
+  if (!currentUser || !databaseReady) return false;
   const id = await ensureConversation(firstQuestion);
-  if (role === 'user') {
-    await supabaseClient.from('conversations').update({ context: promiseInput.value.trim().slice(0, 3000) }).eq('id', id);
-  }
-  const { error } = await supabaseClient.from('messages').insert({ conversation_id: id, user_id: currentUser.id, role, content: content.slice(0, 6000) });
-  if (error) throw error;
-  await supabaseClient.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', id);
+  await apiRequest('/api/data', {
+    method: 'POST', body: JSON.stringify({
+      action: 'saveMessage', conversationId: id, role, content: content.slice(0, 6000),
+      context: promiseInput.value.trim().slice(0, 3000)
+    })
+  });
   return true;
 }
 
 document.querySelector('#authForm').addEventListener('submit', async event => {
   event.preventDefault();
-  if (!supabaseClient) return toast('Database sign-in is not configured yet.');
+  if (!databaseReady) return toast('Account storage is not configured yet.');
   const email = document.querySelector('#authEmail').value.trim();
   const displayName = document.querySelector('#authName').value.trim();
+  const password = document.querySelector('#authPassword').value;
   const button = document.querySelector('#authButton');
   button.disabled = true;
   try {
-    const options = { emailRedirectTo: window.location.origin, shouldCreateUser: authMode === 'signup' };
-    if (authMode === 'signup' && displayName) options.data = { display_name: displayName };
-    const { error } = await supabaseClient.auth.signInWithOtp({ email, options });
-    if (error) throw error;
-    toast(authMode === 'signup' ? 'Account link sent. Check your email to finish signing up.' : 'Sign-in link sent. Check your email.');
-    document.querySelector('#accountCopy').textContent = authMode === 'signup'
-      ? 'Check your inbox to confirm your email and activate your account.'
-      : 'Check your inbox for a secure sign-in link. It may take a minute to arrive.';
+    const result = await apiRequest('/api/auth', {
+      method: 'POST',
+      body: JSON.stringify({ action: authMode, email, password, displayName })
+    });
+    setAuthView(result.user);
+    document.querySelector('#authPassword').value = '';
+    toast(authMode === 'signup' ? 'Account created. Your private history is ready.' : 'Signed in. Your private history is ready.');
   } catch (error) {
-    console.error('Sign-in error:', error.message);
-    toast('Could not send the link. Check Supabase Auth email and redirect settings.');
+    console.error('Account authentication error:', error.message);
+    toast(error.message || 'Could not create the account. Check your email and password.');
   } finally {
     button.disabled = false;
   }
@@ -291,52 +305,22 @@ document.querySelector('#signupMode').addEventListener('click', () => setAuthMod
 document.querySelector('#loginMode').addEventListener('click', () => setAuthMode('login'));
 
 document.querySelector('#signOutButton').addEventListener('click', async () => {
-  if (supabaseClient) await supabaseClient.auth.signOut();
+  try { await apiRequest('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'logout' }) }); }
+  catch (error) { console.error('Sign-out request failed:', error.message); }
   resetConversationView();
   allowAutoRestore = true;
   setAuthView(null);
   toast('Signed out.');
 });
 
-const supabaseReady = (async () => {
+const accountReady = (async () => {
   try {
-    const response = await fetch('./api/supabase-config');
-    const config = await response.json();
-    if (!response.ok) throw new Error(config.error || 'Supabase config is unavailable.');
-    if (!window.supabase?.createClient) throw new Error('Supabase browser library did not load.');
-    supabaseClient = window.supabase.createClient(config.url, config.key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-    });
-    const { data } = await supabaseClient.auth.getSession();
-    setAuthView(data.session?.user || null);
-    supabaseClient.auth.onAuthStateChange((_event, session) => {
-      setAuthView(session?.user || null);
-      if (session?.user) {
-        const displayName = session.user.user_metadata?.display_name || null;
-        if (displayName) {
-          queueMicrotask(() => {
-            supabaseClient.from('profiles').upsert({
-              id: session.user.id,
-              display_name: displayName,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'id' }).then(({ error }) => {
-              if (error) console.error('Could not save profile name:', error.message);
-            });
-          });
-        }
-      } else {
-        activeConversationId = null;
-        history.length = 0;
-        selectedFile = null;
-        fileInput.value = '';
-        fileChip.classList.add('hidden');
-        dropzone.classList.remove('hidden');
-        resetConversationView();
-      }
-    });
+    const { user } = await apiRequest('/api/auth');
+    databaseReady = true;
+    setAuthView(user);
   } catch (error) {
     console.error('Database setup unavailable:', error.message);
-    document.querySelector('#accountCopy').textContent = 'Account storage is not connected. Reviews are paused until setup is available.';
+    document.querySelector('#accountCopy').textContent = 'Account storage is not connected. Guest reviews are still available.';
     setAuthView(null);
   }
 })();
@@ -345,7 +329,7 @@ form.addEventListener('submit', async event => {
   event.preventDefault();
   const text = question.value.trim();
   if (!text) return;
-  await supabaseReady;
+  await accountReady;
   if (!selectedFile && history.length === 0) return toast('Add a bill before asking your first question.');
   const file = selectedFile;
   addMessage(text, 'user');
@@ -368,14 +352,10 @@ form.addEventListener('submit', async event => {
     const payload = { message: text, history: history.slice(-11, -1), promise: promiseInput.value.trim() };
     if (file) payload.file = { name: file.name, type: file.type, data: await readFileAsDataURL(file) };
     const headers = { 'Content-Type': 'application/json' };
-    if (currentUser && supabaseClient) {
-      const { data: authData, error: authError } = await supabaseClient.auth.getSession();
-      if (authError || !authData.session?.access_token) throw new Error('Your sign-in session expired. Please sign in again.');
-      headers.Authorization = `Bearer ${authData.session.access_token}`;
-    }
     const response = await fetch('./api/analyze', {
       method: 'POST',
       headers,
+      credentials: 'same-origin',
       body: JSON.stringify(payload)
     });
     const result = await response.json();

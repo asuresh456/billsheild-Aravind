@@ -28,11 +28,13 @@
           </div>
           <label for="authName" id="authNameLabel">Your name</label>
           <input id="authName" type="text" autocomplete="name" maxlength="100" placeholder="Name (optional)" />
-          <label for="authEmail">Email address</label>
+          <label for="authEmail">BillShield ID (email)</label>
           <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
-          <button id="authButton" type="submit">Create account with email</button>
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required />
+          <button id="authButton" type="submit">Create account</button>
         </form>
-        <p class="auth-help" id="authHelp">We’ll email you a secure link to confirm your address and finish creating your account.</p>
+        <p class="auth-help" id="authHelp">Use your email as your BillShield ID. No confirmation email is sent.</p>
         <button id="signOutButton" class="sign-out-button hidden" type="button">Sign out</button>
         <div id="conversationList" class="conversation-list hidden" aria-label="Saved conversations"></div>
         <small class="account-privacy">Signed-in chat text and your stated terms are saved to your account. Bill files are sent to Gemini for review and are not saved here. Avoid full card or account numbers.</small>
@@ -133,7 +135,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>
