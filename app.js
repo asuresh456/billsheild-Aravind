@@ -295,17 +295,20 @@ const supabaseReady = (async () => {
     });
     const { data } = await supabaseClient.auth.getSession();
     setAuthView(data.session?.user || null);
-    supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
       setAuthView(session?.user || null);
       if (session?.user) {
         const displayName = session.user.user_metadata?.display_name || null;
         if (displayName) {
-          const { error } = await supabaseClient.from('profiles').upsert({
-            id: session.user.id,
-            display_name: displayName,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'id' });
-          if (error) console.error('Could not save profile name:', error.message);
+          queueMicrotask(() => {
+            supabaseClient.from('profiles').upsert({
+              id: session.user.id,
+              display_name: displayName,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' }).then(({ error }) => {
+              if (error) console.error('Could not save profile name:', error.message);
+            });
+          });
         }
       } else {
         activeConversationId = null;
@@ -355,7 +358,13 @@ form.addEventListener('submit', async event => {
     }
     const payload = { message: text, history: history.slice(-11, -1), promise: promiseInput.value.trim() };
     if (file) payload.file = { name: file.name, type: file.type, data: await readFileAsDataURL(file) };
-    const response = await fetch('./api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const { data: authData, error: authError } = await supabaseClient.auth.getSession();
+    if (authError || !authData.session?.access_token) throw new Error('Your sign-in session expired. Please sign in again.');
+    const response = await fetch('./api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authData.session.access_token}` },
+      body: JSON.stringify(payload)
+    });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Bill review failed.');
     pending.textContent = result.answer;
