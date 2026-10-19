@@ -17,6 +17,25 @@
       <div class="rail-label">WORKSPACE</div>
       <button class="nav-item active" type="button"><span class="nav-icon">▤</span> New bill review</button>
       <button class="nav-item" id="newReview" type="button"><span class="nav-icon">＋</span> Start over</button>
+      <div class="account-panel" id="accountPanel">
+        <div class="rail-label">PRIVATE HISTORY</div>
+        <p class="account-copy" id="accountCopy">Create an account or sign in to save your bill reviews.</p>
+        <form id="authForm" class="auth-form">
+          <div class="auth-mode" role="group" aria-label="Choose account action">
+            <button id="signupMode" class="auth-mode-button active" type="button" aria-pressed="true">Sign up</button>
+            <button id="loginMode" class="auth-mode-button" type="button" aria-pressed="false">Sign in</button>
+          </div>
+          <label for="authName" id="authNameLabel">Your name</label>
+          <input id="authName" type="text" autocomplete="name" maxlength="100" placeholder="Name (optional)" />
+          <label for="authEmail">Email address</label>
+          <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
+          <button id="authButton" type="submit">Create account with email</button>
+        </form>
+        <p class="auth-help" id="authHelp">We’ll email you a secure link to confirm your address and finish creating your account.</p>
+        <button id="signOutButton" class="sign-out-button hidden" type="button">Sign out</button>
+        <div id="conversationList" class="conversation-list hidden" aria-label="Saved conversations"></div>
+        <small class="account-privacy">Signed-in chat text and your stated terms are saved to your account. Bill files are sent to Gemini for review and are not saved here. Avoid full card or account numbers.</small>
+      </div>
       <div class="rail-note"><span class="rail-note-icon">i</span><div><strong>Understand first</strong><p>A charge can be unfamiliar without being an error.</p></div></div>
       <div class="rail-bottom"><span class="privacy-dot"></span><span>API key stays on the server</span></div>
     </aside>
@@ -24,7 +43,7 @@
     <main class="main-area">
       <header class="topbar">
         <div class="breadcrumbs">BillShield <span>/</span> <strong>New review</strong></div>
-        <div class="top-status"><span class="status-dot"></span> Private review</div>
+        <div class="top-status"><span class="status-dot"></span><span id="privacyStatus">Guest review · not saved</span></div>
       </header>
 
       <div class="page-wrap">
@@ -44,7 +63,8 @@
         <div class="content-grid">
           <section class="conversation-column">
             <div class="section-heading"><div><span class="step-label">YOUR CONVERSATION</span><h2>Ask about your bill</h2></div><span class="conversation-state"><i></i> Ready when you are</span></div>
-            <div class="chat-card">
+            <div class="auth-required-banner hidden" id="authRequiredBanner">Sign up or sign in to start a private bill review. Your conversations will be saved to your account.</div>
+            <div class="chat-card" id="chatCard">
               <div class="chat-messages" id="messages" aria-live="polite">
                 <div class="message assistant-message">
                   <div class="message-avatar">B</div>
@@ -80,7 +100,7 @@
                 <small>PDF, JPG, PNG or WebP · up to 3 MB</small>
               </label>
               <div class="file-chip hidden" id="fileChip"><span class="file-type">PDF</span><span class="file-name" id="fileName"></span><button id="removeFile" type="button" aria-label="Remove file">×</button></div>
-              <div class="privacy-note"><span>◈</span><span><strong>File handling:</strong> sent to the AI provider for analysis; this prototype does not save it.</span></div>
+              <div class="privacy-note"><span>◈</span><span><strong>File handling:</strong> sent to Gemini for this review and not saved by BillShield. Signed-in chat text stays private to your account.</span></div>
             </section>
 
             <section class="bill-card promise-card">
@@ -112,6 +132,7 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>
